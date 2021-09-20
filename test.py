@@ -10,10 +10,17 @@ import scipy.sparse as sp
 from data_util import load_data, preprocess_features
 adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_data()
 
-device = torch.device("cuda")
+device = torch.device("cpu")
 
 dense_feat = features.todense()
 dense_adj = adj.todense()
+
+support = preprocess_adj(adj) 
+# for non sparse
+support = torch.tensor(sp.coo_matrix((support[1],(support[0][:,0],support[0][:,1])),shape=support[2]).toarray()).to(device)
+
+# dense_adj = support
+
 
 
 num_nodes, num_features, num_classes = dense_feat.shape[0], dense_feat.shape[1], y_train.shape[1]
@@ -38,47 +45,22 @@ y_test = torch.argmax(y_test, dim = 1)[test_mask]
 
 print("%d train, %d valid, %d test"%(len(y_train), len(y_valid), len(y_test)))
 
-model = GCN(input_dim = num_features, hidden_dim = 16, output_dim = num_classes).to(device)
-optimizer = torch.optim.Adam([
-    dict(params=model.conv1.parameters(), weight_decay=5e-4),
-    dict(params=model.conv2.parameters(), weight_decay=0)
-], lr=0.01) 
-
-
-def test(feature_mat, adj_mat):
-    model.eval()
-    logits, prob = model(feature_mat, adj_mat, attack = False)
-    accs = []
-    for mask in ["train", "valid", "test"]:
-        pred = torch.argmax(prob[eval(mask + "_mask")], dim = 1)
-        acc = pred.eq(eval("y_" + mask)).sum().item() / eval("y_" + mask).size(0)
-        accs.append(acc)
-    return accs
-
-
-best_val_acc = test_acc = 0
 
 adj_mat = adj_mat + torch.eye(adj_mat.size(0)).to(device)
 row_sum = torch.sum(adj_mat, dim = 1)
 d_sqrt_inv = row_sum.pow_(-0.5).view(-1)
+
 d_sqrt_inv[torch.isinf(d_sqrt_inv)] = 0
-normalized_adj = torch.multiply(torch.multiply(d_sqrt_inv, adj_mat), d_sqrt_inv.view(1,-1))
+d_mat_inv_sqrt = torch.diag(d_sqrt_inv)
+normalized_adj = torch.matmul(torch.matmul(d_mat_inv_sqrt, adj_mat),d_mat_inv_sqrt)
+# normalized_adj = torch.multiply(torch.multiply(d_sqrt_inv, adj_mat), d_sqrt_inv.view(1,-1))
 
-for epoch in range(300):
-    model.train()
-    optimizer.zero_grad()
-    logits, prob = model(feature_mat, normalized_adj, attack = False)
-    prob = prob[train_mask]
-    logits = logits[train_mask]
+# normalized_adj = adj_mat
+print(torch.sum(normalized_adj, dim = 0))
+print(torch.sum(normalized_adj, dim = 1))
 
-    loss = F.nll_loss(prob, y_train)
-    # loss = F.cross_entropy(logits, y_train)
-    loss.backward()
-    optimizer.step()
-    train_acc, val_acc, test_acc = test(feature_mat, normalized_adj)
-    if val_acc > best_val_acc:
-        best_val_acc = val_acc
-        test_acc = test_acc
-    log = 'Epoch: {:03d}, Train: {:.4f}, Val: {:.4f}, Test: {:.4f}'
-    print(log.format(epoch, train_acc, best_val_acc, test_acc))
-print("best acc: ", test_acc)
+
+print(torch.sum(support, dim = 0))
+print(torch.sum(support, dim = 1))
+
+print(torch.sum(normalized_adj - support))

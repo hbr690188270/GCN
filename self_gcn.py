@@ -40,33 +40,13 @@ class GCN(nn.Module):
         self.conv2 = GCNLayer(self.hidden_dim, self.output_dim)
     
     def forward(self, input_x, adj,attack = True):
-        if attack:
-            mu = torch.IntTensor(1)
-            A = adj
-            mask = torch.Tensor(np.triu(np.ones(shape = A.size(),  dtype = np.float32), 1,))
-            C = 1 - 2 * A - torch.eye(A.size(0))
-            upper_S_0 = torch.zeros(A.size())
-            upper_S_real = torch.triu(upper_S_0, diagonal = 1) 
-            upper_S_real2 = upper_S_real + torch.transpose(upper_S_0, 0, 1)
-            modified_A = A + torch.multiply(upper_S_real2, C)
-            hat_A = modified_A + torch.eye(A.size(0))
-            row_sum = torch.sum(hat_A, dim = 1)
-            d_sqrt = torch.sqrt(row_sum)
-            d_sqrt_inv = torch.linalg.inv(d_sqrt).view(-1,1)
-            support_real = torch.multiply(torch.multiply(d_sqrt_inv, hat_A), d_sqrt_inv.view(1,-1))
-            x = F.relu(self.conv1(input_x, support_real))
-            x = F.dropout(x, training = self.training)
-            logits = self.conv2(x, support_real)
-            prob = F.log_softmax(logits, dim = 1)
-            return logits, prob
-        else:
-            # x = F.dropout(input_x, training = self.training, p = 0.5)
-            x = input_x
-            x = F.relu(self.conv1(x, adj))
-            x = F.dropout(x, training = self.training, p = 0.5)
-            logits = self.conv2(x, adj)
-            prob = F.log_softmax(logits, dim = 1)
+        # x = F.dropout(input_x, training = self.training, p = 0.5)
+        x = input_x
+        x = F.relu(self.conv1(x, adj))
+        x = F.dropout(x, training = self.training, p = 0.5)
+        logits = self.conv2(x, adj)
+        prob = F.log_softmax(logits, dim = 1)
 
-            return logits, prob
+        return logits, prob
 
 
