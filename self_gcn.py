@@ -39,14 +39,32 @@ class GCN(nn.Module):
         self.conv1 = GCNLayer(self.input_dim, self.hidden_dim)
         self.conv2 = GCNLayer(self.hidden_dim, self.output_dim)
     
-    def forward(self, input_x, adj,attack = True):
+    def forward(self, input_x, adj, attack = False, device = torch.device('cuda')):
         # x = F.dropout(input_x, training = self.training, p = 0.5)
-        x = input_x
-        x = F.relu(self.conv1(x, adj))
-        x = F.dropout(x, training = self.training, p = 0.5)
-        logits = self.conv2(x, adj)
-        prob = F.log_softmax(logits, dim = 1)
+        if not attack:
+            x = input_x
+            x = F.relu(self.conv1(x, adj))
+            x = F.dropout(x, training = self.training, p = 0.5)
+            logits = self.conv2(x, adj)
+            prob = F.log_softmax(logits, dim = 1)
+            output = (logits, prob)
+        else:
+            upper_S_0 = torch.zeros(adj.shape, requires_grad = True, device = device, dtype = torch.float)
+            A = torch.tensor(adj, dtype = torch.float, device = device)
+            C_mat = 1 - 2 * A - torch.eye(A.size(0), device = device, dtype = torch.float)
+            mask = torch.tensor(np.triu(np.ones(shape = A.size(),  dtype = np.float32), 1,), device = device)
+            upper_S_real = torch.triu(upper_S_0, diagonal = 1)
+            upper_S_real2 = upper_S_real + torch.transpose(upper_S_real, 1, 0)
+            modified_A = A + torch.multiply(upper_S_real2, C_mat)
+            
+            hat_A = modified_A + torch.eye(A.size(0), device = device)
+            row_sum = torch.sum(hat_A, dim = 1)
+            d_sqrt_inv = row_sum.pow_(-0.5).view(-1,1)
+            support_real = torch.multiply(torch.multiply(d_sqrt_inv, hat_A), d_sqrt_inv.view(1,-1))
 
-        return logits, prob
+            logits, prob = self.forward(input_x, support_real)
+
+
+        return output
 
 

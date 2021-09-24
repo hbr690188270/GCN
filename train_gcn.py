@@ -45,9 +45,9 @@ optimizer = torch.optim.Adam([
 ], lr=0.01) 
 
 
-def test(feature_mat, adj_mat):
+def test(model, feature_mat, adj_mat):
     model.eval()
-    logits, prob = model(feature_mat, adj_mat, attack = False)
+    logits, prob = model(feature_mat, adj_mat)
     accs = []
     for mask in ["train", "valid", "test"]:
         pred = torch.argmax(prob[eval(mask + "_mask")], dim = 1)
@@ -64,10 +64,10 @@ d_sqrt_inv = row_sum.pow_(-0.5).view(-1)
 d_sqrt_inv[torch.isinf(d_sqrt_inv)] = 0
 normalized_adj = torch.multiply(torch.multiply(d_sqrt_inv, adj_mat), d_sqrt_inv.view(1,-1))
 
-for epoch in range(300):
+for epoch in range(200):
     model.train()
     optimizer.zero_grad()
-    logits, prob = model(feature_mat, normalized_adj, attack = False)
+    logits, prob = model(feature_mat, normalized_adj)
     prob = prob[train_mask]
     logits = logits[train_mask]
 
@@ -75,10 +75,12 @@ for epoch in range(300):
     # loss = F.cross_entropy(logits, y_train)
     loss.backward()
     optimizer.step()
-    train_acc, val_acc, test_acc = test(feature_mat, normalized_adj)
+    train_acc, val_acc, test_acc = test(model, feature_mat, normalized_adj)
     if val_acc > best_val_acc:
         best_val_acc = val_acc
         test_acc = test_acc
     log = 'Epoch: {:03d}, Train: {:.4f}, Val: {:.4f}, Test: {:.4f}'
     print(log.format(epoch, train_acc, best_val_acc, test_acc))
 print("best acc: ", test_acc)
+
+torch.save(model, './models/cora/model.pt')
