@@ -129,7 +129,7 @@ for n in range(train_steps):
     print('[adv support] train acc: {}, train loss: {}, test acc: {}, test loss: {}'.format(train_acc, train_loss, test_acc_adv, test_loss_adv))
     
     robust_acc.append(test_acc_adv)
-    robust_loss.append(test_loss_adv)
+    robust_loss.append(test_loss_adv.item())
 
     logits, prob = model(feature_mat, nat_support)
     train_loss = F.cross_entropy(logits[train_mask], y_train)
@@ -139,7 +139,7 @@ for n in range(train_steps):
     test_acc_nat = torch.argmax(prob[test_mask], dim = 1).eq(y_test).sum().item()/y_test.size(0)
 
     clean_acc.append(test_acc_nat)
-    clean_loss.append(test_loss_nat)
+    clean_loss.append(test_loss_nat.item())
 
     print('[nat support] train acc: {}, train loss: {}, test acc: {}, test loss: {}'.format(train_acc, train_loss, test_acc_nat, test_loss_nat))
     
