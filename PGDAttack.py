@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import time
+import logging
+logger = logging.getLogger("adv_train")
 
 def bisection(a,eps,xi,ub=1):
     pa = torch.clip(a, 0, ub)
@@ -32,7 +34,7 @@ def bisection(a,eps,xi,ub=1):
 
 
 class pgd_attack():
-    def __init__(self, model, features, orig_adj, ratio, xi = 1e-7, device = torch.device('cuda')):
+    def __init__(self, model, features, orig_adj, ratio, xi = 1e-5, device = torch.device('cuda')):
         self.victim_model = model
         self.features = features
         self.orig_adj = orig_adj
@@ -53,11 +55,11 @@ class pgd_attack():
         mask = torch.tensor(np.triu(np.ones(shape = A.size(),  dtype = np.float32), 1,), device = self.device)
 
         C = 200
-        upper_S_real = torch.triu(upper_S_0, diagonal = 1)
         for epoch in range(k):
             t = time.time()
             mu = C / np.sqrt(epoch + 1)
             # mu = 1
+            upper_S_real = torch.triu(upper_S_0, diagonal = 1)
             upper_S_real2 = upper_S_real + torch.transpose(upper_S_real, 1, 0)
             modified_A = A + torch.multiply(upper_S_real2, C_mat)
             
@@ -75,6 +77,7 @@ class pgd_attack():
             if visualize:
                 print("Epoch:", '%04d' % (epoch + 1), "test_loss=", "{:.5f}".format(loss),
                     "test_acc=", "{:.5f}".format(test_acc), "time=", "{:.5f}".format(time.time() - t))
+                logger.info("Step: {: 04d}, test_loss= {:.5f}, test_acc={:.5f}, time={:.5f}".format(epoch + 1,loss, test_acc, time.time() - t))
 
             upper_S_real.retain_grad()
             # A.retain_grad()
@@ -97,6 +100,7 @@ class pgd_attack():
                 for _ in range(20):
                     if visualize:
                         print('random start!')
+                        logger.info("randm start!")
                     randm = torch.tensor(np.random.uniform(size=(self.num_nodes, self.num_nodes))).to(self.device)
                     upper_S_update = torch.where(upper_S_update_tmp > randm, 1, 0)
                     upper_S_real = upper_S_update
@@ -125,7 +129,12 @@ class pgd_attack():
                             "test_acc=", "{:.5f}".format(acc), "time=", "{:.5f}".format(time.time() - t))
                         print("perturb ratio", pr)
                         print('random end!')
+                        logger.info("Step: {: 04d}, test_loss= {:.5f}, test_acc={:.5f}, time={:.5f}".format(epoch + 1,loss, acc, time.time() - t))
+                        logger.info("perturb ratio: %f"%(pr))
+                        logger.info("random end!")
+
                 print("acc list: ", acc_record)
+                logger.info("acc list {}".format(acc_record))
                 if len(acc_record) == 0:
                     return ()
                 return (support_record[np.argmin(acc_record)],)

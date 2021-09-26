@@ -21,10 +21,14 @@ fh.setFormatter(formatter)
 fh.setLevel(logging.INFO)  # 输出到file的log等级的开关
 logger.addHandler(fh)
 
+device = torch.device("cuda")
+
+
+dataset = 'cora'
+pre_pred_label = torch.tensor(np.load('label_'+ dataset + '.npy')).to(device)
 
 adj, features, orig_y_train, orig_y_val, orig_y_test, all_orig_label, train_mask, val_mask, test_mask = load_data()
 
-device = torch.device("cuda")
 
 dense_feat = features.todense()
 dense_adj = adj.todense()
@@ -92,7 +96,10 @@ robust_loss = []
 clean_acc = []
 clean_loss = []
 
-logger.info("Setting: standard setting")
+adv_training_mask = train_mask + test_mask
+adv_training_label = torch.argmax(pre_pred_label[adv_training_mask], dim = 1)
+attack_mask = train_mask + test_mask
+attack_label = torch.argmax(pre_pred_label[attack_mask], dim = 1)
 
 for n in range(train_steps):
     print('\n\n============================= iteration {}/{} =============================='.format(n+1, train_steps))
@@ -109,8 +116,8 @@ for n in range(train_steps):
 
 
     logits, prob = model(feature_mat, adv_support)
-    loss = F.cross_entropy(logits[train_mask], y_train)
-    acc = torch.argmax(prob[train_mask], dim = 1).eq(y_train).sum().item()/y_train.size(0)
+    loss = F.cross_entropy(logits[adv_training_mask], adv_training_label)
+    acc = torch.argmax(prob[adv_training_mask], dim = 1).eq(adv_training_label).sum().item()/adv_training_label.size(0)
     loss_record.append(loss.item())
     optimizer.zero_grad()
     loss.backward()
@@ -125,7 +132,7 @@ for n in range(train_steps):
     logger.info("ATTACK")
 
     model.eval()
-    new_adv_support = attacker.perturb(y_train, train_mask, k = attack_steps, visualize=False)
+    new_adv_support = attacker.perturb(attack_label, attack_mask, k = attack_steps, visualize=False)
 
     if len(new_adv_support) == 0:
         print("fail to sample a valid modification...")
@@ -139,8 +146,8 @@ for n in range(train_steps):
 
     train_acc = torch.argmax(prob[train_mask], dim = 1).eq(y_train).sum().item()/y_train.size(0)
     test_acc_adv = torch.argmax(prob[test_mask], dim = 1).eq(y_test).sum().item()/y_test.size(0)
-    print('[adv support] train acc: {}, train loss: {}, test acc: {}, test loss: {}'.format(train_acc, train_loss, test_acc_adv, test_loss_adv))
-    logger.info('[adv support] train acc: {}, train loss: {}, test acc: {}, test loss: {}'.format(train_acc, train_loss, test_acc_adv, test_loss_adv))
+    print('[adv support] train acc: {}, train loss: {}, test acc: {:f}, test loss: {}'.format(train_acc, train_loss, test_acc_adv, test_loss_adv))
+    logger.info('[adv support] train acc: {}, train loss: {}, test acc: {:f}, test loss: {}'.format(train_acc, train_loss, test_acc_adv, test_loss_adv))
 
     robust_acc.append(test_acc_adv)
     robust_loss.append(test_loss_adv.item())
@@ -155,14 +162,14 @@ for n in range(train_steps):
     clean_acc.append(test_acc_nat)
     clean_loss.append(test_loss_nat.item())
 
-    print('[nat support] train acc: {}, train loss: {}, test acc: {}, test loss: {}'.format(train_acc, train_loss, test_acc_nat, test_loss_nat))
-    logger.info('[ nat support] train acc: {}, train loss: {}, test acc: {}, test loss: {}'.format(train_acc, train_loss, test_acc_nat, test_loss_nat))
+    print('[nat support] train acc: {}, train loss: {}, test acc: {:f}, test loss: {}'.format(train_acc, train_loss, test_acc_nat, test_loss_nat))
+    logger.info('[ nat support] train acc: {}, train loss: {}, test acc: {:f}, test loss: {}'.format(train_acc, train_loss, test_acc_nat, test_loss_nat))
 
     if test_loss_adv < best_loss:
         best_loss = test_loss_adv
-        torch.save(model, "./models/cora/rob_model_std.pt")
+        torch.save(model, "./models/cora/rob_model.pt")
 
-with open("./results/cora/result_std.pkl",'wb') as f:
+with open("./results/cora/result.pkl",'wb') as f:
     pickle.dump((robust_acc, robust_loss, clean_acc, clean_loss), f)
 
 

@@ -47,14 +47,16 @@ d_sqrt_inv = row_sum.pow_(-0.5).view(-1,1)
 normalized_adj = torch.multiply(torch.multiply(d_sqrt_inv, adj_mat), d_sqrt_inv.view(1,-1))
 
 # model = GCN(input_dim = num_features, hidden_dim = 16, output_dim = num_classes).to(device)
-model = torch.load("./models/cora/model.pt").to(device)
+model = torch.load("./models/cora/rob_model_std.pt").to(device)
 model.eval()
 logits, prob = model(feature_mat, normalized_adj)
 label = torch.argmax(prob, dim = 1)
 
-test_pred_label = label[test_mask]
-corr_test_mask = test_pred_label == y_test
-corr_pred_test = test_pred_label[corr_test_mask]
+test_loss = F.cross_entropy(logits[test_mask], y_test)
+test_pred = label[test_mask]
+test_acc = test_pred.eq(y_test).sum().item()/y_test.size(0)
+print("test loss: {}, test acc {}".format(test_loss, test_acc))
+
 
 
 def bisection(a,eps,xi,ub=1):
@@ -123,7 +125,7 @@ eps = num_edges * perturb_ratio
 xi = 1e-5
 # attack_mask = train_mask.detach() + test_mask.detach()
 # attack_mask = test_mask.detach()[corr_test_mask]
-attack_label = y_all[test_mask][corr_test_mask].to(device).long()
+attack_label = y_all[test_mask].to(device).long()
 
 upper_S_0 = torch.zeros(dense_adj.shape, requires_grad = True, device = device, dtype = torch.float)
 A = torch.tensor(dense_adj, dtype = torch.float, device = device, requires_grad=True)
@@ -145,12 +147,12 @@ for epoch in range(steps):
     support_real = torch.multiply(torch.multiply(d_sqrt_inv, hat_A), d_sqrt_inv.view(1,-1))
 
     logits, prob = model(feature_mat, support_real)
-    loss = F.cross_entropy(logits[test_mask][corr_test_mask], attack_label)
+    loss = F.cross_entropy(logits[test_mask], attack_label)
 
 
-    test_pred = torch.argmax(prob, dim = 1)[test_mask][corr_test_mask]
-    test_acc = test_pred.eq(corr_pred_test).sum().item()/corr_pred_test.size(0)
-    test_loss = F.cross_entropy(logits[test_mask], corr_pred_test)
+    test_pred = torch.argmax(prob, dim = 1)[test_mask]
+    test_acc = test_pred.eq(y_test).sum().item()/y_test.size(0)
+    test_loss = F.cross_entropy(logits[test_mask], y_test)
     print("Epoch:", '%04d' % (epoch + 1), "test_loss=", "{:.5f}".format(test_loss),
           "test_acc=", "{:.5f}".format(test_acc), "time=", "{:.5f}".format(time.time() - t))
 
@@ -197,9 +199,9 @@ for epoch in range(steps):
             d_sqrt_inv = (1 / d_sqrt).view(-1,1)
             support_real = torch.multiply(torch.multiply(d_sqrt_inv, hat_A), d_sqrt_inv.view(1,-1))
             logits, prob = model(feature_mat, support_real)
-            pred = torch.argmax(prob[test_mask], dim = 1)[corr_test_mask]
-            loss = F.cross_entropy(prob[test_mask][corr_test_mask], corr_pred_test)
-            acc = pred.eq(corr_pred_test).sum().item() / corr_pred_test.size(0)
+            pred = torch.argmax(prob[test_mask], dim = 1)
+            loss = F.cross_entropy(prob[test_mask],y_test)
+            acc = pred.eq(y_test).sum().item() / y_test.size(0)
 
 
             pr = torch.count_nonzero(upper_S_update) / num_edges
